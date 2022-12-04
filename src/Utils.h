@@ -23,6 +23,38 @@ namespace Utils {
 		return func(a_furn);
 	}
 
+	struct ConnectedREFR {
+		uint64_t unk00;
+		RE::BSTArray<RE::TESObjectREFR*> refrArr;
+	};
+
+	void GetConnectedContainers(ConnectedREFR& a_con, RE::BGSLocation* a_loc, uint32_t arg3 = 0) {
+		if (!a_loc)
+			return;
+
+		using func_t = decltype(&GetConnectedContainers);
+		REL::Relocation<func_t> func{ REL::ID(190731) };
+
+		func(a_con, a_loc, arg3);
+	}
+
+	void FreeConnectedREFR(ConnectedREFR& a_con) {
+		using func_t = decltype(&FreeConnectedREFR);
+		REL::Relocation<func_t> func{ REL::ID(25437) };
+
+		func(a_con);
+	}
+
+	RE::BGSLocation* GetLocation(RE::TESObjectREFR* a_refr) {
+		if (!a_refr)
+			return nullptr;
+
+		using func_t = decltype(&GetLocation);
+		REL::Relocation<func_t> func{ REL::ID(1135470) };
+
+		return func(a_refr);
+	}
+
 	uint32_t GetInventoryItemCount(RE::TESObjectREFR* a_refr, RE::TESForm* a_item) {
 		if (!a_refr || !a_item)
 			return 0;

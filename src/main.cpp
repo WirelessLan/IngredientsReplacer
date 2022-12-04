@@ -83,6 +83,11 @@ public:
 				continue;
 			}
 
+			if (targetIngredientForm == replaceIngredientForm) {
+				logger::warn(FMT_STRING("Replace ingredient is target ingredient! - {}"), line);
+				continue;
+			}
+
 			auto recipe_iter = g_replacerMap.find(recipeForm->formID);
 			if (recipe_iter == g_replacerMap.end()) {
 				auto recipeInsert_iter = g_replacerMap.insert(std::make_pair(recipeForm->formID, std::unordered_map<uint32_t, std::unordered_set<RE::TESForm*>>()));
@@ -252,14 +257,28 @@ private:
 			return;
 
 		std::vector<RE::TESObjectREFR*> refrVec;
-		refrVec.push_back(g_player);
-
 		RE::TESObjectREFR* currFurnRefr = Utils::GetCurrentFurniture(g_player);
 		if (currFurnRefr)
 			refrVec.push_back(currFurnRefr);
 		RE::TESObjectREFR* workshopRefr = currFurnRefr ? Utils::GetParentWorkshop(currFurnRefr) : nullptr;
 		if (workshopRefr)
 			refrVec.push_back(workshopRefr);
+
+		bool getConContainers = false;
+		Utils::ConnectedREFR conRefr;
+		if (workshopRefr) {
+			RE::BGSLocation* workshopLoc = Utils::GetLocation(workshopRefr);
+			if (workshopLoc) {
+				Utils::GetConnectedContainers(conRefr, workshopLoc);
+				for (RE::TESObjectREFR* refr : conRefr.refrArr)
+					refrVec.push_back(refr);
+				Utils::FreeConnectedREFR(conRefr);
+				getConContainers = true;
+			}
+		}
+		
+		if (!getConContainers)
+			refrVec.push_back(g_player);
 
 		for (Ingredient ingredient : targetIngVec) {
 			uint32_t ingHoldCnt = Utils::GetInventoryItemCount(refrVec, ingredient.form);
