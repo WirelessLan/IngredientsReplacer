@@ -246,42 +246,16 @@ private:
 		std::vector<Ingredient> targetIngVec;
 		for (Ingredient ingredient : **a_ingArr) {
 			auto ing_iter = conObj_iter->second.find(ingredient.form->formID);
-			if (ing_iter == conObj_iter->second.end())
-				continue;
-
-			targetIngVec.push_back(ingredient);
+			if (ing_iter != conObj_iter->second.end())
+				targetIngVec.push_back(ingredient);
 		}
 
-		RE::PlayerCharacter* g_player = RE::PlayerCharacter::GetSingleton();
-		if (!g_player)
+		Utils::WorkbenchMenuBase* craftingMenu = Utils::GetCraftingMenu();
+		if (!craftingMenu)
 			return;
 
-		std::vector<RE::TESObjectREFR*> refrVec;
-		RE::TESObjectREFR* currFurnRefr = Utils::GetCurrentFurniture(g_player);
-		if (currFurnRefr)
-			refrVec.push_back(currFurnRefr);
-		RE::TESObjectREFR* workshopRefr = currFurnRefr ? Utils::GetParentWorkshop(currFurnRefr) : nullptr;
-		if (workshopRefr)
-			refrVec.push_back(workshopRefr);
-
-		bool getConContainers = false;
-		Utils::ConnectedREFR conRefr;
-		if (workshopRefr) {
-			RE::BGSLocation* workshopLoc = Utils::GetLocation(workshopRefr);
-			if (workshopLoc) {
-				Utils::GetConnectedContainers(conRefr, workshopLoc);
-				for (RE::TESObjectREFR* refr : conRefr.refrArr)
-					refrVec.push_back(refr);
-				Utils::FreeConnectedREFR(conRefr);
-				getConContainers = true;
-			}
-		}
-		
-		if (!getConContainers)
-			refrVec.push_back(g_player);
-
 		for (Ingredient ingredient : targetIngVec) {
-			uint32_t ingHoldCnt = Utils::GetInventoryItemCount(refrVec, ingredient.form);
+			uint32_t ingHoldCnt = Utils::GetInventoryItemCount(&craftingMenu->inventoryList, ingredient.form);
 			if (ingHoldCnt >= ingredient.count)
 				continue;
 
@@ -290,26 +264,34 @@ private:
 				continue;
 
 			uint32_t reqCnt = ingredient.count - ingHoldCnt;
+			uint32_t currReqCnt = reqCnt;
 			for (RE::TESForm* form : ing_iter->second) {
-				uint32_t formHoldCnt = Utils::GetInventoryItemCount(refrVec, form);
-				if (formHoldCnt >= reqCnt) {
-					Ingredient* formIng = GetIngredient(*a_ingArr, form);
-					if (formIng)
-						formIng->count += reqCnt;
-					else 
-						(*a_ingArr)->push_back({ form, reqCnt });
-					reqCnt = 0;
+				uint32_t formHoldCnt = Utils::GetInventoryItemCount(&craftingMenu->inventoryList, form);
+				if (formHoldCnt == 0)
+					continue;
+
+				uint32_t newIngCnt = formHoldCnt >= currReqCnt ? currReqCnt : formHoldCnt;
+
+				Ingredient* formIng = GetIngredient(*a_ingArr, form);
+				if (formIng)
+					formIng->count += newIngCnt;
+				else
+					(*a_ingArr)->push_back({ form, newIngCnt });
+
+				currReqCnt -= newIngCnt;
+				if (currReqCnt == 0)
 					break;
-				}
 			}
 
-			if (reqCnt > 0 && reqCnt != ingredient.count) {
-				Ingredient* arrIng = GetIngredient(*a_ingArr, ingredient.form);
-				if (arrIng)
-					arrIng->count -= reqCnt;
-			}
-			else if (reqCnt == 0) {
-				RemoveIngredient(*a_ingArr, ingredient.form);
+			if (reqCnt != currReqCnt) {
+				uint32_t leftover = ingredient.count - (reqCnt - currReqCnt);
+				if (leftover != 0) {
+					Ingredient* arrIng = GetIngredient(*a_ingArr, ingredient.form);
+					if (arrIng)
+						arrIng->count = leftover;
+				}
+				else
+					RemoveIngredient(*a_ingArr, ingredient.form);
 			}
 		}
 	}

@@ -1,58 +1,105 @@
 #pragma once
 
 namespace Utils {
+	class WorkbenchMenuBase : public RE::GameMenuBase
+	{
+	public:
+		RE::TESObjectREFR* unkE0;					// E0
+		RE::TESObjectREFR* unkE8;					// E8
+		uint64_t unkF0;								// F0
+		uint64_t unkF8;								// F8
+		uint64_t unk100;							// 100
+		void* unk108;								// 108
+		RE::Inventory3DManager inventory3DManager;	// 110
+		RE::BGSInventoryList inventoryList;			// 250
+	};
 
-	RE::TESObjectREFR* GetCurrentFurniture(RE::Actor* a_actor) {
-		if (!a_actor || !a_actor->currentProcess || !a_actor->currentProcess->middleHigh)
+	WorkbenchMenuBase* GetCraftingMenu() {
+		RE::UI* g_ui = RE::UI::GetSingleton();
+		if (!g_ui)
 			return nullptr;
 
-		RE::NiPointer<RE::TESObjectREFR> currFurn = a_actor->currentProcess->middleHigh->currentFurniture.get();
-		if (currFurn)
-			return currFurn.get();
-
+		for (auto menuPtr : g_ui->menuStack) {
+			RE::IMenu* menu = menuPtr.get();
+			if (menu && (menu->menuName == "ExamineMenu" || menu->menuName == "CookingMenu" || menu->menuName == "RobotModMenu"))
+				return reinterpret_cast<WorkbenchMenuBase*>(menu);
+		}
 		return nullptr;
 	}
 
-	RE::TESObjectREFR* GetParentWorkshop(RE::TESObjectREFR* a_furn) {
-		if (!a_furn)
-			return nullptr;
-
-		using func_t = decltype(&GetParentWorkshop);
-		REL::Relocation<func_t> func{ REL::ID(266741) };
-
-		return func(a_furn);
+	uint32_t GetStackCount(RE::BGSInventoryItem::Stack* a_stack) {
+		RE::BGSInventoryItem::Stack* sp = a_stack;
+		uint32_t itemCnt = 0;
+		while (sp) {
+			itemCnt += sp->count;
+			sp = sp->nextStack.get();
+		}
+		return itemCnt;
 	}
 
-	struct ConnectedREFR {
-		uint64_t unk00;
-		RE::BSTArray<RE::TESObjectREFR*> refrArr;
-	};
+	uint32_t GetItemCount(RE::BGSInventoryList* a_inv, RE::TESForm* a_item) {
+		if (!a_inv || !a_item)
+			return 0;
 
-	void GetConnectedContainers(ConnectedREFR& a_con, RE::BGSLocation* a_loc, uint32_t arg3 = 0) {
-		if (!a_loc)
-			return;
+		uint32_t totalItemCount = 0;
+		a_inv->rwLock.lock_read();
+		for (RE::BGSInventoryItem& item : a_inv->data) {
+			if (item.object == a_item) {
+				totalItemCount = GetStackCount(item.stackData.get());
+				break;
+			}
+		}
+		a_inv->rwLock.unlock_read();
 
-		using func_t = decltype(&GetConnectedContainers);
-		REL::Relocation<func_t> func{ REL::ID(190731) };
-
-		func(a_con, a_loc, arg3);
+		return totalItemCount;
 	}
 
-	void FreeConnectedREFR(ConnectedREFR& a_con) {
-		using func_t = decltype(&FreeConnectedREFR);
-		REL::Relocation<func_t> func{ REL::ID(25437) };
+	uint32_t GetComponentCount(RE::BSTArray<RE::BSTTuple<RE::TESForm*, RE::BGSTypedFormValuePair::SharedVal>>* componentData, RE::BGSComponent* a_cmpo) {
+		if (!componentData)
+			return 0;
 
-		func(a_con);
+		for (auto tuple : *componentData) {
+			if (tuple.first == a_cmpo)
+				return tuple.second.i;
+		}
+
+		return 0;
 	}
 
-	RE::BGSLocation* GetLocation(RE::TESObjectREFR* a_refr) {
-		if (!a_refr)
-			return nullptr;
+	uint32_t GetComponentCount(RE::BGSInventoryList* a_inv, RE::BGSComponent* a_cmpo) {
+		if (!a_inv || !a_cmpo)
+			return 0;
 
-		using func_t = decltype(&GetLocation);
-		REL::Relocation<func_t> func{ REL::ID(1135470) };
+		uint32_t totalItemCount = 0;
+		a_inv->rwLock.lock_read();
+		for (RE::BGSInventoryItem& item : a_inv->data) {
+			if (!item.object || item.object->formType != RE::ENUM_FORM_ID::kMISC)
+				continue;
 
-		return func(a_refr);
+			RE::TESObjectMISC* miscItem = RE::fallout_cast<RE::TESObjectMISC*, RE::TESForm>(item.object);
+			if (!miscItem)
+				continue;
+
+			if (miscItem == a_cmpo->scrapItem)
+				totalItemCount += GetStackCount(item.stackData.get());
+			else {
+				uint32_t compCnt = GetComponentCount(miscItem->componentData, a_cmpo);
+				if (compCnt == 0)
+					continue;
+
+				totalItemCount += GetStackCount(item.stackData.get()) * compCnt;
+			}
+		}
+		a_inv->rwLock.unlock_read();
+
+		return totalItemCount;
+	}
+
+	uint32_t GetInventoryItemCount(RE::BGSInventoryList* a_inv, RE::TESForm* a_item) {
+		if (a_item->formType == RE::ENUM_FORM_ID::kCMPO)
+			return GetComponentCount(a_inv, RE::fallout_cast<RE::BGSComponent*, RE::TESForm>(a_item));
+		else
+			return GetItemCount(a_inv, a_item);
 	}
 
 	uint32_t GetInventoryItemCount(RE::TESObjectREFR* a_refr, RE::TESForm* a_item) {
@@ -63,30 +110,7 @@ namespace Utils {
 		if (!inventory)
 			return 0;
 
-		uint32_t totalItemCount = 0;
-		inventory->rwLock.lock_read();
-		for (RE::BGSInventoryItem& item : inventory->data) {
-			if (item.object == a_item) {
-				RE::BGSInventoryItem::Stack* sp = item.stackData.get();
-				while (sp) {
-					totalItemCount += sp->count;
-					sp = sp->nextStack.get();
-				}
-				break;
-			}
-		}
-		inventory->rwLock.unlock_read();
-
-		return totalItemCount;
-	}
-
-	uint32_t GetInventoryItemCount(const std::vector<RE::TESObjectREFR*>& a_refrArr, RE::TESForm* a_item) {
-		uint32_t retVal = 0;
-
-		for (RE::TESObjectREFR* refr : a_refrArr)
-			retVal += GetInventoryItemCount(refr, a_item);
-
-		return retVal;
+		return GetInventoryItemCount(inventory, a_item);
 	}
 
 	const RE::TESFile* LookupModByName(RE::TESDataHandler* dataHandler, const std::string& pluginName) {
